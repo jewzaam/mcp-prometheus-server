@@ -25,8 +25,13 @@ This MCP server enables AI assistants to query Prometheus metrics through four c
 
 ### Configuration
 - **Prometheus URL**: Configurable endpoint (default: http://localhost:9090)
-- **Authentication**: Optional bearer token support
-- **Environment Variables**: PROMETHEUS_URL, PROMETHEUS_AUTH_TOKEN
+- **Authentication**: Bearer token AND basic authentication support
+- **Environment Variables**: 
+  - PROMETHEUS_URL: Prometheus server URL
+  - PROMETHEUS_AUTH_TOKEN: Bearer token for authentication
+  - PROMETHEUS_USERNAME: Username for basic authentication
+  - PROMETHEUS_PASSWORD: Password for basic authentication
+- **Auth Precedence**: Bearer token takes precedence over basic auth if both provided
 
 ### Error Handling
 - Connection errors with clear messages

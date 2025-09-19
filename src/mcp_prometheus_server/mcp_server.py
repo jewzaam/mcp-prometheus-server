@@ -52,8 +52,8 @@ async def handle_list_tools() -> list[Tool]:
                 "type": "object",
                 "properties": {
                     "query": {
-                        "type": "string", 
-                        "description": "PromQL query string (e.g., 'cpu_usage{instance=\"server1\"}', 'rate(http_requests_total[5m])', 'up == 0')"
+                        "type": "string",
+                        "description": "PromQL query string (e.g., 'cpu_usage{instance=\"server1\"}', 'rate(http_requests_total[5m])', 'up == 0')",
                     },
                     "relative_time": {
                         "type": "string",
@@ -128,6 +128,107 @@ async def handle_list_tools() -> list[Tool]:
     ]
 
 
+async def _handle_query_metric(arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle query_metric tool call."""
+    query = arguments.get("query", "")
+    relative_time = arguments.get("relative_time", "5m")
+
+    if not query:
+        msg = "Query parameter is required"
+        raise ValueError(msg)
+
+    result = await prometheus_client.query_metric(query, relative_time)
+
+    return [
+        TextContent(type="text", text=f"Query Result:\n{_format_query_result(result)}")
+    ]
+
+
+async def _handle_get_instance_value(arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle get_instance_value tool call."""
+    metric_name = arguments.get("metric_name", "")
+    instance = arguments.get("instance", "")
+    relative_time = arguments.get("relative_time", "5m")
+
+    if not metric_name or not instance:
+        msg = "metric_name and instance parameters are required"
+        raise ValueError(msg)
+
+    value = await prometheus_client.get_instance_value(
+        metric_name, instance, relative_time
+    )
+
+    if value is not None:
+        return [
+            TextContent(
+                type="text",
+                text=f"Instance '{instance}' metric '{metric_name}' value: {value}",
+            )
+        ]
+    return [
+        TextContent(
+            type="text",
+            text=f"No value found for metric '{metric_name}' on instance '{instance}'",
+        )
+    ]
+
+
+async def _handle_get_metric_history(arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle get_metric_history tool call."""
+    metric_name = arguments.get("metric_name", "")
+    relative_time = arguments.get("relative_time", "1h")
+    step = arguments.get("step", "1m")
+
+    if not metric_name:
+        msg = "metric_name parameter is required"
+        raise ValueError(msg)
+
+    history = await prometheus_client.get_metric_history(
+        metric_name, relative_time, step
+    )
+
+    if history:
+        history_text = f"Historical data for '{metric_name}' ({relative_time}):\n"
+        for data_point in history[
+            -MAX_DISPLAYED_HISTORY_POINTS:
+        ]:  # Show last 10 points
+            timestamp = data_point["timestamp"]
+            value = data_point["value"]
+            labels = data_point["labels"]
+            history_text += f"  {timestamp}: {value} {labels}\n"
+
+        return [TextContent(type="text", text=history_text)]
+    return [
+        TextContent(
+            type="text",
+            text=f"No historical data found for metric '{metric_name}'",
+        )
+    ]
+
+
+# Constants
+MAX_DISPLAYED_METRICS = 20
+MAX_DISPLAYED_HISTORY_POINTS = 10
+
+
+async def _handle_list_metrics(arguments: dict[str, Any]) -> list[TextContent]:
+    """Handle list_available_metrics tool call."""
+    pattern = arguments.get("pattern")
+
+    metrics = await prometheus_client.list_available_metrics(pattern)
+
+    if metrics:
+        metrics_text = f"Available metrics ({len(metrics)} found):\n"
+        for metric in metrics[:MAX_DISPLAYED_METRICS]:  # Show first 20 metrics
+            metrics_text += f"  {metric}\n"
+
+        if len(metrics) > MAX_DISPLAYED_METRICS:
+            metrics_text += f"  ... and {len(metrics) - MAX_DISPLAYED_METRICS} more"
+
+        return [TextContent(type="text", text=metrics_text)]
+    return [TextContent(type="text", text="No metrics found")]
+
+
 @server.call_tool()
 async def handle_call_tool(
     name: str, arguments: dict[str, Any] | None
@@ -138,96 +239,19 @@ async def handle_call_tool(
 
     try:
         if name == "query_metric":
-            query = arguments.get("query", "")
-            relative_time = arguments.get("relative_time", "5m")
-
-            if not query:
-                raise ValueError("Query parameter is required")
-
-            result = await prometheus_client.query_metric(query, relative_time)
-
-            return [
-                TextContent(
-                    type="text", text=f"Query Result:\n{_format_query_result(result)}"
-                )
-            ]
-
+            return await _handle_query_metric(arguments)
         if name == "get_instance_value":
-            metric_name = arguments.get("metric_name", "")
-            instance = arguments.get("instance", "")
-            relative_time = arguments.get("relative_time", "5m")
-
-            if not metric_name or not instance:
-                raise ValueError("metric_name and instance parameters are required")
-
-            value = await prometheus_client.get_instance_value(
-                metric_name, instance, relative_time
-            )
-
-            if value is not None:
-                return [
-                    TextContent(
-                        type="text",
-                        text=f"Instance '{instance}' metric '{metric_name}' value: {value}",
-                    )
-                ]
-            return [
-                TextContent(
-                    type="text",
-                    text=f"No value found for metric '{metric_name}' on instance '{instance}'",
-                )
-            ]
-
+            return await _handle_get_instance_value(arguments)
         if name == "get_metric_history":
-            metric_name = arguments.get("metric_name", "")
-            relative_time = arguments.get("relative_time", "1h")
-            step = arguments.get("step", "1m")
-
-            if not metric_name:
-                raise ValueError("metric_name parameter is required")
-
-            history = await prometheus_client.get_metric_history(
-                metric_name, relative_time, step
-            )
-
-            if history:
-                history_text = (
-                    f"Historical data for '{metric_name}' ({relative_time}):\n"
-                )
-                for data_point in history[-10:]:  # Show last 10 points
-                    timestamp = data_point["timestamp"]
-                    value = data_point["value"]
-                    labels = data_point["labels"]
-                    history_text += f"  {timestamp}: {value} {labels}\n"
-
-                return [TextContent(type="text", text=history_text)]
-            return [
-                TextContent(
-                    type="text",
-                    text=f"No historical data found for metric '{metric_name}'",
-                )
-            ]
-
+            return await _handle_get_metric_history(arguments)
         if name == "list_available_metrics":
-            pattern = arguments.get("pattern")
+            return await _handle_list_metrics(arguments)
 
-            metrics = await prometheus_client.list_available_metrics(pattern)
-
-            if metrics:
-                metrics_text = f"Available metrics ({len(metrics)} found):\n"
-                for metric in metrics[:20]:  # Show first 20 metrics
-                    metrics_text += f"  {metric}\n"
-
-                if len(metrics) > 20:
-                    metrics_text += f"  ... and {len(metrics) - 20} more"
-
-                return [TextContent(type="text", text=metrics_text)]
-            return [TextContent(type="text", text="No metrics found")]
-
-        raise ValueError(f"Unknown tool: {name}")
+        msg = f"Unknown tool: {name}"
+        raise ValueError(msg)
 
     except Exception as e:
-        logger.error(f"Tool call failed: {e}")
+        logger.exception("Tool call failed")
         return [TextContent(type="text", text=f"Error: {e!s}")]
 
 
@@ -271,16 +295,16 @@ def _format_query_result(result: dict[str, Any]) -> str:
 async def main() -> None:
     """Run the MCP Prometheus server."""
     logger.info("Starting MCP Prometheus server...")
-    logger.info(f"Prometheus URL: {prometheus_url}")
-    
+    logger.info("Prometheus URL: %s", prometheus_url)
+
     # Log authentication method
     if auth_token:
         logger.info("Using Bearer token authentication")
     elif username and password:
-        logger.info(f"Using basic authentication for user: {username}")
+        logger.info("Using basic authentication for user: %s", username)
     else:
         logger.info("No authentication configured")
-    
+
     try:
         async with stdio_server() as (read_stream, write_stream):
             await server.run(

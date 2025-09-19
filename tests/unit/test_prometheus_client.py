@@ -6,7 +6,7 @@ Comprehensive tests covering Prometheus client functionality,
 relative time parsing, and error handling.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 import pytest
@@ -66,7 +66,7 @@ class TestPrometheusClient:
     def test_parse_relative_time_minutes(self):
         """Test parsing relative time in minutes."""
         client = PrometheusClient()
-        end_time = datetime(2024, 1, 1, 12, 0, 0)
+        end_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         start_time = client._parse_relative_time("5m", end_time)
         expected = end_time - timedelta(minutes=5)
@@ -76,7 +76,7 @@ class TestPrometheusClient:
     def test_parse_relative_time_hours(self):
         """Test parsing relative time in hours."""
         client = PrometheusClient()
-        end_time = datetime(2024, 1, 1, 12, 0, 0)
+        end_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         start_time = client._parse_relative_time("2h", end_time)
         expected = end_time - timedelta(hours=2)
@@ -86,7 +86,7 @@ class TestPrometheusClient:
     def test_parse_relative_time_days(self):
         """Test parsing relative time in days."""
         client = PrometheusClient()
-        end_time = datetime(2024, 1, 1, 12, 0, 0)
+        end_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         start_time = client._parse_relative_time("7d", end_time)
         expected = end_time - timedelta(days=7)
@@ -96,7 +96,7 @@ class TestPrometheusClient:
     def test_parse_relative_time_weeks(self):
         """Test parsing relative time in weeks."""
         client = PrometheusClient()
-        end_time = datetime(2024, 1, 1, 12, 0, 0)
+        end_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         start_time = client._parse_relative_time("2w", end_time)
         expected = end_time - timedelta(weeks=2)
@@ -106,7 +106,7 @@ class TestPrometheusClient:
     def test_parse_relative_time_case_insensitive(self):
         """Test parsing relative time is case insensitive."""
         client = PrometheusClient()
-        end_time = datetime(2024, 1, 1, 12, 0, 0)
+        end_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         start_time_upper = client._parse_relative_time("5M", end_time)
         start_time_lower = client._parse_relative_time("5m", end_time)
@@ -116,7 +116,7 @@ class TestPrometheusClient:
     def test_parse_relative_time_invalid_format(self):
         """Test parsing invalid relative time format raises ValueError."""
         client = PrometheusClient()
-        end_time = datetime(2024, 1, 1, 12, 0, 0)
+        end_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         with pytest.raises(ValueError, match="Invalid relative time format"):
             client._parse_relative_time("invalid", end_time)
@@ -124,7 +124,7 @@ class TestPrometheusClient:
     def test_parse_relative_time_negative_value(self):
         """Test parsing negative relative time values."""
         client = PrometheusClient()
-        end_time = datetime(2024, 1, 1, 12, 0, 0)
+        end_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         start_time = client._parse_relative_time("5m", end_time)
         expected = end_time - timedelta(minutes=5)
@@ -359,8 +359,8 @@ class TestPrometheusClient:
         client = PrometheusClient()
 
         mock_response = {"status": "success", "data": {"result": []}}
-        start_time = datetime(2024, 1, 1, 12, 0, 0)
-        end_time = datetime(2024, 1, 1, 12, 5, 0)
+        start_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        end_time = datetime(2024, 1, 1, 12, 5, 0, tzinfo=timezone.utc)
 
         with patch.object(client.http_client, "get") as mock_get:
             mock_response_obj = Mock()
@@ -386,8 +386,8 @@ class TestPrometheusClient:
         client = PrometheusClient()
 
         mock_response = {"status": "success", "data": {"result": []}}
-        start_time = datetime(2024, 1, 1, 12, 0, 0)
-        end_time = datetime(2024, 1, 1, 12, 5, 0)
+        start_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        end_time = datetime(2024, 1, 1, 12, 5, 0, tzinfo=timezone.utc)
 
         with patch.object(client.http_client, "get") as mock_get:
             mock_response_obj = Mock()
@@ -433,7 +433,7 @@ class TestPrometheusClient:
     def test_relative_time_edge_cases(self):
         """Test edge cases for relative time parsing."""
         client = PrometheusClient()
-        end_time = datetime(2024, 1, 1, 12, 0, 0)
+        end_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
 
         # Test zero values
         start_time = client._parse_relative_time("0m", end_time)

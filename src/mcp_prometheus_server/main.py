@@ -45,7 +45,7 @@ def main(args: list[str] | None = None) -> int:
 
     logger = logging.getLogger(__name__)
     logger.info("Starting MCP Prometheus Server")
-    logger.info(f"Prometheus URL: {parsed_args.prometheus_url}")
+    logger.info("Prometheus URL: %s", parsed_args.prometheus_url)
 
     if parsed_args.auth_token:
         logger.info("Authentication token provided")

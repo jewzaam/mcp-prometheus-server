@@ -8,7 +8,7 @@ and instance value reading.
 
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -29,7 +29,7 @@ class PrometheusClient:
         timeout: int = 30,
     ) -> None:
         """Initialize Prometheus client.
-        
+
         Args:
             prometheus_url: URL of the Prometheus server
             auth_token: Optional Bearer token for authentication
@@ -39,17 +39,18 @@ class PrometheusClient:
         """
         self.prometheus_url = prometheus_url.rstrip("/")
         self.timeout = timeout
-        
+
         # Prepare authentication headers
         auth_headers = {}
-        
+
         if auth_token:
             auth_headers["Authorization"] = f"Bearer {auth_token}"
         elif username and password:
             import base64
+
             credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
             auth_headers["Authorization"] = f"Basic {credentials}"
-        
+
         # Initialize Prometheus API client
         self.pc = PrometheusConnect(
             url=self.prometheus_url,
@@ -84,19 +85,21 @@ class PrometheusClient:
         """
         try:
             # Parse relative time to absolute timestamp
-            end_time = datetime.now()
+            end_time = datetime.now(timezone.utc)
             start_time = self._parse_relative_time(relative_time, end_time)
 
             # Execute query
             result = await self._execute_query(query, start_time, end_time)
 
             logger.info(
-                f"Query '{query}' executed successfully for time range {relative_time}"
+                "Query '%s' executed successfully for time range %s",
+                query,
+                relative_time,
             )
             return result
 
-        except Exception as e:
-            logger.error(f"Query failed: {e}")
+        except Exception:
+            logger.exception("Query failed")
             raise
 
     async def get_instance_value(
@@ -137,12 +140,12 @@ class PrometheusClient:
                         return float(latest_value[1])
 
             logger.warning(
-                f"No value found for metric '{metric_name}' on instance '{instance}'"
+                "No value found for metric '%s' on instance '%s'", metric_name, instance
             )
             return None
 
-        except Exception as e:
-            logger.error(f"Failed to get instance value: {e}")
+        except Exception:
+            logger.exception("Failed to get instance value")
             raise
 
     async def get_metric_history(
@@ -170,7 +173,7 @@ class PrometheusClient:
             query = f"{metric_name}"
 
             # Parse relative time
-            end_time = datetime.now()
+            end_time = datetime.now(timezone.utc)
             start_time = self._parse_relative_time(relative_time, end_time)
 
             # Execute range query
@@ -193,12 +196,14 @@ class PrometheusClient:
                         )
 
             logger.info(
-                f"Retrieved {len(history_data)} historical data points for '{metric_name}'"
+                "Retrieved %d historical data points for '%s'",
+                len(history_data),
+                metric_name,
             )
             return history_data
 
-        except Exception as e:
-            logger.error(f"Failed to get metric history: {e}")
+        except Exception:
+            logger.exception("Failed to get metric history")
             raise
 
     async def list_available_metrics(
@@ -233,11 +238,11 @@ class PrometheusClient:
                     if metric_name:
                         metric_names.add(metric_name)
 
-            logger.info(f"Found {len(metric_names)} available metrics")
+            logger.info("Found %d available metrics", len(metric_names))
             return sorted(list(metric_names))
 
-        except Exception as e:
-            logger.error(f"Failed to list metrics: {e}")
+        except Exception:
+            logger.exception("Failed to list metrics")
             raise
 
     def _parse_relative_time(self, relative_time: str, end_time: datetime) -> datetime:
@@ -275,7 +280,8 @@ class PrometheusClient:
                 if unit == "weeks":
                     return end_time - timedelta(weeks=value)
 
-        raise ValueError(f"Invalid relative time format: {relative_time}")
+        msg = f"Invalid relative time format: {relative_time}"
+        raise ValueError(msg)
 
     async def _execute_query(
         self,
