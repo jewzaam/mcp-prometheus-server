@@ -1,0 +1,95 @@
+# Generated-by: Cursor (claude-4-sonnet)
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-prometheus-server"
+version = "0.1.0"
+description = "MCP server for querying Prometheus metrics with relative time support"
+authors = [
+    {name = "jewzaam", email = "jewzaam@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    # Core MCP dependencies
+    "mcp>=1.0.0",
+    "httpx>=0.25.0",
+    "anyio>=3.0.0",
+    "pydantic>=2.0.0",
+    # Prometheus client
+    "prometheus-api-client>=0.5.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+]
+
+# MCP server entry point
+[project.scripts]
+mcp-prometheus-server = "mcp_prometheus_server.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "YTT", "S", "BLE", "FBT", "B", "A", "COM", "C4", "DTZ", "T10", "DJ", "EM", "EXE", "FA", "ISC", "ICN", "G", "INP", "PIE", "T20", "PYI", "PT", "Q", "RSE", "RET", "SLF", "SLOT", "SIM", "TID", "TCH", "INT", "ARG", "PTH", "TD", "FIX", "ERA", "PD", "PGH", "PL", "TRY", "FLY", "NPY", "PERF", "FURB", "LOG", "RUF"]
+ignore = [
+    "E501",     # Line too long (handled by formatter)
+    "S101",     # Use of assert
+    "PLR0913",  # Too many arguments
+    "PLR0912",  # Too many branches
+    "PLR0915",  # Too many statements
+    "PLW0603",  # Global statement usage (singleton pattern)
+    "TRY300",   # Else after return (guard clause pattern)
+    "COM812",   # Trailing comma missing (conflicts with formatter)
+    "ERA001",   # Found commented-out code (template needs examples)
+    "S603",     # subprocess call (needed for testing CLI functionality)  
+    "PLC0415",  # import at module level (tests may need local imports)
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-v --tb=short --cov=src --cov-report=html --cov-report=term"
+asyncio_mode = "auto"

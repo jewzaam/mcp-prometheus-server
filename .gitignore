@@ -1,0 +1,97 @@
+# Generated-by: Cursor (claude-4-sonnet)
+# Python Template .gitignore
+# ==========================
+
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+.venv-cursor/
+venv/
+env/
+ENV/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.#*
+\#*#
+*.orig
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Environment files
+.env
+.env.local
+.envrc
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# Documentation builds
+docs/_build/
+site/
+
+# Local development
+local/
+scratch/
+notes.txt
+debug/
+
+# MCP specific (when applicable)
+cursor-mcp-config.json
+
+# Test artifacts
+.pytest_cache/
+.coverage
+.coverage-percentage
+htmlcov/
+test-results/
+coverage.xml
+
+# Security sensitive files
+*.pem
+*.key
+id_*
+!id_*.pub
+*.gpg
+*.asc
+*.sec
+*.sig
+gpg/
+.gnupg/

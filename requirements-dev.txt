@@ -1,0 +1,10 @@
+# Generated-by: Cursor (claude-4-sonnet)
+# Development dependencies for template-python
+# This file serves as a backup for pip-based installations
+# The preferred method is using pyproject.toml with: pip install -e ".[dev]"
+
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+mypy>=1.0.0
+ruff>=0.1.0
