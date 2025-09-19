@@ -6,6 +6,7 @@ Comprehensive tests covering MCP server functionality,
 tool registration, and error handling.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -426,3 +427,352 @@ class TestFormatQueryResult:
         formatted = _format_query_result(result)
 
         assert "No data returned" in formatted
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_invalid_parameter_types(self):
+        """Test tool call with invalid parameter types."""
+        # Test with non-string parameters
+        result = await handle_call_tool(
+            "query_metric", {"query": 123, "relative_time": "5m"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        # Should handle type conversion or error appropriately
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_whitespace_parameters(self):
+        """Test tool call with whitespace-only parameters."""
+        result = await handle_call_tool(
+            "query_metric", {"query": "   ", "relative_time": "5m"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_very_long_parameters(self):
+        """Test tool call with very long parameter values."""
+        long_query = "cpu_usage" * 1000  # Very long query string
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(return_value={"status": "success", "data": {"result": []}})
+
+            result = await handle_call_tool(
+                "query_metric", {"query": long_query, "relative_time": "5m"}
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_special_characters(self):
+        """Test tool call with special characters in parameters."""
+        special_query = 'cpu_usage{instance="server-1", job="test-job"}'
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(return_value={"status": "success", "data": {"result": []}})
+
+            result = await handle_call_tool(
+                "query_metric", {"query": special_query, "relative_time": "5m"}
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_unicode_parameters(self):
+        """Test tool call with unicode characters in parameters."""
+        unicode_query = "cpu_usage{instance=\"服务器-1\"}"
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(return_value={"status": "success", "data": {"result": []}})
+
+            result = await handle_call_tool(
+                "query_metric", {"query": unicode_query, "relative_time": "5m"}
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_empty_string_parameters(self):
+        """Test tool call with empty string parameters."""
+        result = await handle_call_tool(
+            "get_instance_value", {"metric_name": "", "instance": "server1"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_none_parameters(self):
+        """Test tool call with None parameters."""
+        result = await handle_call_tool(
+            "get_instance_value", {"metric_name": None, "instance": "server1"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_extra_parameters(self):
+        """Test tool call with extra unexpected parameters."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(return_value={"status": "success", "data": {"result": []}})
+
+            result = await handle_call_tool(
+                "query_metric", 
+                {
+                    "query": "cpu_usage", 
+                    "relative_time": "5m",
+                    "extra_param": "should_be_ignored"
+                }
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_malformed_arguments(self):
+        """Test tool call with malformed arguments structure."""
+        result = await handle_call_tool("query_metric", "not_a_dict")
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_nested_arguments(self):
+        """Test tool call with nested argument structures."""
+        result = await handle_call_tool(
+            "query_metric", 
+            {"query": {"nested": "value"}, "relative_time": "5m"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        # Should handle nested structures appropriately
+
+    @pytest.mark.asyncio
+    async def test_tool_call_timeout_handling(self):
+        """Test tool call timeout handling."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(side_effect=asyncio.TimeoutError("Query timed out"))
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            assert "Error:" in result[0].text
+            assert "timed out" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_memory_error_handling(self):
+        """Test tool call memory error handling."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(side_effect=MemoryError("Out of memory"))
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_keyboard_interrupt_handling(self):
+        """Test tool call keyboard interrupt handling."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            # Use a custom exception that behaves like KeyboardInterrupt but doesn't trigger pytest's special handling
+            class CustomInterrupt(Exception):
+                pass
+            
+            mock_client.query_metric = AsyncMock(side_effect=CustomInterrupt("Interrupted"))
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            assert "Error:" in result[0].text
+            assert "Interrupted" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_system_exit_handling(self):
+        """Test tool call system exit handling."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            # Use a custom exception that behaves like SystemExit but doesn't trigger pytest's special handling
+            class CustomSystemExit(Exception):
+                pass
+            
+            mock_client.query_metric = AsyncMock(side_effect=CustomSystemExit("System exit"))
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            assert "Error:" in result[0].text
+            assert "System exit" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_very_large_result_set(self):
+        """Test tool call with very large result set."""
+        # Create a large result set
+        large_result = {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [
+                    {
+                        "metric": {"__name__": f"metric_{i}", "instance": f"server_{i}"},
+                        "value": [1640995200, str(i)],
+                    }
+                    for i in range(1000)  # 1000 series
+                ],
+            },
+        }
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(return_value=large_result)
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            # Should truncate to first 5 series
+            assert "Series 1:" in result[0].text
+            assert "Series 5:" in result[0].text
+            assert "... and 995 more" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_very_long_metric_names(self):
+        """Test tool call with very long metric names."""
+        long_metric_name = "very_long_metric_name_" + "x" * 1000
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.get_instance_value = AsyncMock(return_value=85.5)
+
+            result = await handle_call_tool(
+                "get_instance_value",
+                {
+                    "metric_name": long_metric_name,
+                    "instance": "server1",
+                    "relative_time": "5m",
+                },
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_special_characters_in_labels(self):
+        """Test tool call with special characters in metric labels."""
+        mock_history = [
+            {
+                "timestamp": 1640995200,
+                "value": 85.5,
+                "labels": {
+                    "__name__": "cpu_usage",
+                    "instance": "server-1",
+                    "job": "test-job",
+                    "special": "value with spaces and symbols!@#$%",
+                },
+            }
+        ]
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.get_metric_history = AsyncMock(return_value=mock_history)
+
+            result = await handle_call_tool(
+                "get_metric_history",
+                {"metric_name": "cpu_usage", "relative_time": "1h"},
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            assert "special" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_unicode_in_labels(self):
+        """Test tool call with unicode characters in metric labels."""
+        mock_history = [
+            {
+                "timestamp": 1640995200,
+                "value": 85.5,
+                "labels": {
+                    "__name__": "cpu_usage",
+                    "instance": "服务器-1",
+                    "job": "测试-任务",
+                },
+            }
+        ]
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.get_metric_history = AsyncMock(return_value=mock_history)
+
+            result = await handle_call_tool(
+                "get_metric_history",
+                {"metric_name": "cpu_usage", "relative_time": "1h"},
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            assert "服务器" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_very_small_numbers(self):
+        """Test tool call with very small numbers in metric values."""
+        mock_history = [
+            {
+                "timestamp": 1640995200,
+                "value": 1e-10,  # Very small number
+                "labels": {"__name__": "cpu_usage", "instance": "server1"},
+            }
+        ]
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.get_metric_history = AsyncMock(return_value=mock_history)
+
+            result = await handle_call_tool(
+                "get_metric_history",
+                {"metric_name": "cpu_usage", "relative_time": "1h"},
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            assert "1e-10" in result[0].text or "0.0000000001" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_very_large_numbers(self):
+        """Test tool call with very large numbers in metric values."""
+        mock_history = [
+            {
+                "timestamp": 1640995200,
+                "value": 1e15,  # Very large number
+                "labels": {"__name__": "cpu_usage", "instance": "server1"},
+            }
+        ]
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.get_metric_history = AsyncMock(return_value=mock_history)
+
+            result = await handle_call_tool(
+                "get_metric_history",
+                {"metric_name": "cpu_usage", "relative_time": "1h"},
+            )
+
+            assert len(result) == 1
+            assert result[0].type == "text"
+            assert "1e+15" in result[0].text or "1000000000000000" in result[0].text

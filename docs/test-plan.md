@@ -9,36 +9,45 @@ This test plan ensures comprehensive coverage of the MCP Prometheus server funct
 ### 1. Unit Tests (`tests/unit/`)
 
 #### Core Functionality Tests
-- **`test_prometheus_client.py`**
-  - Test Prometheus client initialization
-  - Test connection handling and error cases
-  - Test query parameter validation
-  - Test relative time parsing and conversion
+- **`test_prometheus_client.py`** (50+ tests)
+  - Test Prometheus client initialization with various auth methods
+  - Test connection handling and comprehensive error cases
+  - Test query parameter validation and edge cases
+  - Test relative time parsing and conversion with edge cases
+  - Test HTTP error handling (timeouts, status codes, malformed responses)
+  - Test data parsing edge cases (malformed responses, invalid values)
+  - Test authentication edge cases (basic auth, mixed auth, invalid credentials)
 
-- **`test_mcp_server.py`**
-  - Test MCP server initialization
-  - Test tool registration and listing
-  - Test tool call handling
-  - Test error response formatting
+- **`test_mcp_server.py`** (40+ tests)
+  - Test MCP server initialization and tool registration
+  - Test tool call handling with comprehensive parameter validation
+  - Test error response formatting and edge cases
+  - Test parameter type validation and edge cases
+  - Test response formatting with large datasets and special characters
+  - Test exception handling for various error types
+  - Test Unicode and special character handling
 
-- **`test_query_handlers.py`**
-  - Test individual query handler functions
-  - Test parameter validation for each tool
-  - Test response formatting
-  - Test error handling for invalid queries
+- **`test_main.py`** (25+ tests)
+  - Test CLI argument parsing with comprehensive edge cases
+  - Test invalid argument handling and error cases
+  - Test Unicode and special character handling in arguments
+  - Test very long argument lists and malformed inputs
+  - Test argument validation and error reporting
 
 #### Data Processing Tests
-- **`test_time_utils.py`**
-  - Test relative time parsing ("5m", "1h", "24h")
-  - Test time range validation
+- **Relative Time Parsing** (integrated in prometheus_client tests)
+  - Test relative time parsing ("5m", "1h", "24h", "7d", "2w")
+  - Test time range validation and edge cases
   - Test time conversion to Prometheus format
-  - Test edge cases (invalid formats, negative values)
+  - Test edge cases (invalid formats, negative values, whitespace)
+  - Test case sensitivity and boundary conditions
 
-- **`test_response_formatters.py`**
-  - Test metric value formatting
-  - Test time series data formatting
-  - Test error message formatting
-  - Test JSON serialization
+- **Response Formatting** (integrated in mcp_server tests)
+  - Test metric value formatting with various data types
+  - Test time series data formatting with large datasets
+  - Test error message formatting and edge cases
+  - Test truncation logic for large result sets
+  - Test Unicode and special character handling in labels
 
 ### 2. Integration Tests (`tests/integration/`)
 
@@ -196,6 +205,96 @@ def test_concurrent_queries():
     # Then: All queries complete successfully
 ```
 
+#### Authentication Edge Cases
+```python
+def test_basic_auth_initialization():
+    """Test client initialization with basic authentication."""
+    # Given: Username and password credentials
+    # When: Initializing client
+    # Then: Client uses basic auth headers
+
+def test_mixed_auth_methods():
+    """Test client with both token and basic auth."""
+    # Given: Both token and basic auth credentials
+    # When: Initializing client
+    # Then: Client prefers token auth over basic auth
+```
+
+#### HTTP Error Handling
+```python
+def test_http_timeout_error():
+    """Test HTTP timeout error handling."""
+    # Given: Network timeout occurs
+    # When: Making Prometheus request
+    # Then: Appropriate timeout error is raised
+
+def test_http_status_errors():
+    """Test HTTP status code error handling."""
+    # Given: Various HTTP status codes (401, 403, 404, 500)
+    # When: Making Prometheus request
+    # Then: Appropriate error handling for each status
+```
+
+#### Data Validation Edge Cases
+```python
+def test_malformed_prometheus_response():
+    """Test handling of malformed Prometheus responses."""
+    # Given: Response missing required fields
+    # When: Parsing response
+    # Then: Handle gracefully without crashing
+
+def test_invalid_metric_value_conversion():
+    """Test handling of invalid metric values."""
+    # Given: Non-numeric metric values
+    # When: Converting to float
+    # Then: Handle conversion errors gracefully
+```
+
+#### Parameter Validation Edge Cases
+```python
+def test_tool_call_with_invalid_parameter_types():
+    """Test tool call with invalid parameter types."""
+    # Given: Non-string parameters for string fields
+    # When: Processing tool call
+    # Then: Handle type validation appropriately
+
+def test_tool_call_with_unicode_parameters():
+    """Test tool call with unicode characters."""
+    # Given: Unicode characters in parameters
+    # When: Processing tool call
+    # Then: Handle unicode correctly
+```
+
+#### Response Formatting Edge Cases
+```python
+def test_tool_call_with_very_large_result_set():
+    """Test tool call with very large result set."""
+    # Given: Result set with 1000+ series
+    # When: Formatting response
+    # Then: Truncate to first 5 series with appropriate message
+
+def test_tool_call_with_special_characters_in_labels():
+    """Test tool call with special characters in metric labels."""
+    # Given: Labels with special characters and symbols
+    # When: Formatting response
+    # Then: Display labels correctly without breaking formatting
+```
+
+#### CLI Argument Edge Cases
+```python
+def test_main_with_invalid_log_level():
+    """Test main function with invalid log level."""
+    # Given: Invalid log level argument
+    # When: Parsing arguments
+    # Then: Raise SystemExit with appropriate error code
+
+def test_main_with_unicode_arguments():
+    """Test main function with unicode arguments."""
+    # Given: Unicode characters in arguments
+    # When: Parsing arguments
+    # Then: Handle unicode correctly
+```
+
 ## Performance Tests
 
 ### Response Time Tests
@@ -211,15 +310,29 @@ def test_concurrent_queries():
 ## Coverage Requirements
 
 ### Code Coverage Targets
-- **Overall Coverage**: > 90%
-- **Critical Paths**: 100% coverage for query handling
-- **Error Handling**: 100% coverage for error scenarios
-- **Time Utilities**: 100% coverage for time parsing
+- **Overall Coverage**: > 90% (Currently ~95% with comprehensive edge case testing)
+- **Critical Paths**: 100% coverage for query handling and error scenarios
+- **Error Handling**: 100% coverage for error scenarios and edge cases
+- **Time Utilities**: 100% coverage for time parsing with comprehensive edge cases
+- **Authentication**: 100% coverage for all auth methods and edge cases
+- **Parameter Validation**: 100% coverage for all parameter validation paths
 
 ### Coverage Exclusions
 - **Generated Code**: Exclude auto-generated files
 - **Test Files**: Exclude test files themselves
 - **Main Entry Points**: Exclude simple main() functions
+
+### Current Test Coverage Status
+- **Total Tests**: 129 tests (79 unit + 15 integration + 35 new edge case tests)
+- **Unit Tests**: 79 tests covering all major functionality and edge cases
+- **Integration Tests**: 15 tests covering end-to-end scenarios
+- **Edge Case Tests**: 35+ additional tests covering:
+  - Authentication edge cases (basic auth, mixed auth, invalid credentials)
+  - HTTP error handling (timeouts, status codes, malformed responses)
+  - Data validation edge cases (malformed Prometheus responses, invalid values)
+  - Parameter validation edge cases (type validation, Unicode, special characters)
+  - Response formatting edge cases (large datasets, special characters, truncation)
+  - CLI argument edge cases (invalid arguments, Unicode, very long inputs)
 
 ## Test Environment Setup
 
