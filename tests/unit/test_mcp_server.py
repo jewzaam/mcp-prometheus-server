@@ -88,7 +88,8 @@ class TestMCPServerTools:
         )
 
         assert (
-            list_tool.description == "Discover available metrics in Prometheus. Use this to find metric names when you don't know the exact names, or to explore what metrics are available. Returns a list of metric names matching the pattern."
+            list_tool.description
+            == "Discover available metrics in Prometheus. Use this to find metric names when you don't know the exact names, or to explore what metrics are available. Returns a list of metric names matching the pattern."
         )
         assert list_tool.inputSchema["required"] == []
 
