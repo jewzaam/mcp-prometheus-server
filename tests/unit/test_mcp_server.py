@@ -6,6 +6,7 @@ Comprehensive tests covering MCP server functionality,
 tool registration, and error handling.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -25,13 +26,11 @@ class TestMCPServerTools:
         """Test tool listing functionality."""
         tools = await handle_list_tools()
 
-        assert len(tools) == 4
+        assert len(tools) == 2  # noqa: PLR2004
 
         tool_names = [tool.name for tool in tools]
         assert "query_metric" in tool_names
-        assert "get_instance_value" in tool_names
-        assert "get_metric_history" in tool_names
-        assert "list_available_metrics" in tool_names
+        assert "get_promql_docs" in tool_names
 
     @pytest.mark.asyncio
     async def test_query_metric_tool_schema(self):
@@ -39,58 +38,23 @@ class TestMCPServerTools:
         tools = await handle_list_tools()
         query_tool = next(tool for tool in tools if tool.name == "query_metric")
 
-        assert (
-            query_tool.description
-            == "Execute any PromQL query against Prometheus. Use this for complex queries, aggregations, or when you need specific metric combinations. Returns both current values and time series data depending on the query type."
-        )
+        assert "Execute any PromQL query against Prometheus" in query_tool.description
+        assert "primary tool for all Prometheus interactions" in query_tool.description
         assert "query" in query_tool.inputSchema["required"]
         assert "relative_time" in query_tool.inputSchema["properties"]
         assert query_tool.inputSchema["properties"]["relative_time"]["default"] == "5m"
 
     @pytest.mark.asyncio
-    async def test_get_instance_value_tool_schema(self):
-        """Test get_instance_value tool schema."""
+    async def test_get_promql_docs_tool_schema(self):
+        """Test get_promql_docs tool schema."""
         tools = await handle_list_tools()
-        instance_tool = next(
-            tool for tool in tools if tool.name == "get_instance_value"
-        )
+        docs_tool = next(tool for tool in tools if tool.name == "get_promql_docs")
 
-        assert (
-            instance_tool.description
-            == "Get the current value of a specific metric for a particular instance. Use this when you know the exact metric name and instance identifier. Returns a single numeric value with timestamp."
-        )
-        required = instance_tool.inputSchema["required"]
-        assert "metric_name" in required
-        assert "instance" in required
-
-    @pytest.mark.asyncio
-    async def test_get_metric_history_tool_schema(self):
-        """Test get_metric_history tool schema."""
-        tools = await handle_list_tools()
-        history_tool = next(tool for tool in tools if tool.name == "get_metric_history")
-
-        assert (
-            history_tool.description
-            == "Get historical time series data for a metric over a specified time range. Use this to analyze trends, create graphs, or understand how a metric has changed over time. Returns multiple data points with timestamps."
-        )
-        assert "metric_name" in history_tool.inputSchema["required"]
-        assert (
-            history_tool.inputSchema["properties"]["relative_time"]["default"] == "1h"
-        )
-        assert history_tool.inputSchema["properties"]["step"]["default"] == "1m"
-
-    @pytest.mark.asyncio
-    async def test_list_available_metrics_tool_schema(self):
-        """Test list_available_metrics tool schema."""
-        tools = await handle_list_tools()
-        list_tool = next(
-            tool for tool in tools if tool.name == "list_available_metrics"
-        )
-
-        assert (
-            list_tool.description == "Discover available metrics in Prometheus. Use this to find metric names when you don't know the exact names, or to explore what metrics are available. Returns a list of metric names matching the pattern."
-        )
-        assert list_tool.inputSchema["required"] == []
+        assert "PromQL documentation and examples" in docs_tool.description
+        assert "Essential for writing effective Prometheus queries" in docs_tool.description
+        assert docs_tool.inputSchema["required"] == []
+        assert "topic" in docs_tool.inputSchema["properties"]
+        assert docs_tool.inputSchema["properties"]["topic"]["default"] == ""
 
 
 class TestMCPToolCalls:
@@ -135,147 +99,48 @@ class TestMCPToolCalls:
         assert "Query parameter is required" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_get_instance_value_success(self):
-        """Test successful get_instance_value tool call."""
-        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
-            mock_client.get_instance_value = AsyncMock(return_value=85.5)
-
-            result = await handle_call_tool(
-                "get_instance_value",
-                {
-                    "metric_name": "cpu_usage",
-                    "instance": "server1",
-                    "relative_time": "5m",
-                },
-            )
-
-            assert len(result) == 1
-            assert result[0].type == "text"
-            assert "Instance 'server1' metric 'cpu_usage' value: 85.5" in result[0].text
-
-    @pytest.mark.asyncio
-    async def test_get_instance_value_not_found(self):
-        """Test get_instance_value tool call when no value found."""
-        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
-            mock_client.get_instance_value = AsyncMock(return_value=None)
-
-            result = await handle_call_tool(
-                "get_instance_value",
-                {"metric_name": "cpu_usage", "instance": "server1"},
-            )
-
-            assert len(result) == 1
-            assert result[0].type == "text"
-            assert "No value found" in result[0].text
-
-    @pytest.mark.asyncio
-    async def test_get_instance_value_missing_params(self):
-        """Test get_instance_value tool call with missing parameters."""
-        result = await handle_call_tool(
-            "get_instance_value", {"metric_name": "cpu_usage"}
-        )
+    async def test_get_promql_docs_overview(self):
+        """Test get_promql_docs tool call with no topic."""
+        result = await handle_call_tool("get_promql_docs", {})
 
         assert len(result) == 1
         assert result[0].type == "text"
-        assert "Error:" in result[0].text
-        assert "metric_name and instance parameters are required" in result[0].text
+        assert "PromQL Overview" in result[0].text
+        assert "Query Types" in result[0].text
+        assert "Basic Syntax" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_get_metric_history_success(self):
-        """Test successful get_metric_history tool call."""
-        mock_history = [
-            {
-                "timestamp": 1640995200,
-                "value": 85.5,
-                "labels": {"__name__": "cpu_usage", "instance": "server1"},
-            },
-            {
-                "timestamp": 1640995260,
-                "value": 87.2,
-                "labels": {"__name__": "cpu_usage", "instance": "server1"},
-            },
-        ]
-
-        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
-            mock_client.get_metric_history = AsyncMock(return_value=mock_history)
-
-            result = await handle_call_tool(
-                "get_metric_history",
-                {"metric_name": "cpu_usage", "relative_time": "1h"},
-            )
-
-            assert len(result) == 1
-            assert result[0].type == "text"
-            assert "Historical data for 'cpu_usage'" in result[0].text
-            assert "85.5" in result[0].text
-            assert "87.2" in result[0].text
-
-    @pytest.mark.asyncio
-    async def test_get_metric_history_empty(self):
-        """Test get_metric_history tool call with no data."""
-        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
-            mock_client.get_metric_history = AsyncMock(return_value=[])
-
-            result = await handle_call_tool(
-                "get_metric_history", {"metric_name": "cpu_usage"}
-            )
-
-            assert len(result) == 1
-            assert result[0].type == "text"
-            assert "No historical data found" in result[0].text
-
-    @pytest.mark.asyncio
-    async def test_get_metric_history_missing_metric(self):
-        """Test get_metric_history tool call with missing metric_name."""
-        result = await handle_call_tool("get_metric_history", {"relative_time": "1h"})
+    async def test_get_promql_docs_functions(self):
+        """Test get_promql_docs tool call with functions topic."""
+        result = await handle_call_tool("get_promql_docs", {"topic": "functions"})
 
         assert len(result) == 1
         assert result[0].type == "text"
-        assert "Error:" in result[0].text
-        assert "metric_name parameter is required" in result[0].text
+        assert "PromQL Functions" in result[0].text
+        assert "rate(metric[5m])" in result[0].text
+        assert "sum(metric)" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_list_available_metrics_success(self):
-        """Test successful list_available_metrics tool call."""
-        mock_metrics = ["cpu_usage", "memory_usage", "disk_usage"]
+    async def test_get_promql_docs_rate_function(self):
+        """Test get_promql_docs tool call with rate function topic."""
+        result = await handle_call_tool("get_promql_docs", {"topic": "rate"})
 
-        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
-            mock_client.list_available_metrics = AsyncMock(return_value=mock_metrics)
-
-            result = await handle_call_tool("list_available_metrics", {})
-
-            assert len(result) == 1
-            assert result[0].type == "text"
-            assert "Available metrics (3 found)" in result[0].text
-            assert "cpu_usage" in result[0].text
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "rate() Function" in result[0].text
+        assert "rate(metric[time_range])" in result[0].text
+        assert "per-second average rate" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_list_available_metrics_with_pattern(self):
-        """Test list_available_metrics tool call with pattern."""
-        mock_metrics = ["cpu_usage", "cpu_temperature"]
+    async def test_get_promql_docs_unknown_topic(self):
+        """Test get_promql_docs tool call with unknown topic."""
+        result = await handle_call_tool("get_promql_docs", {"topic": "unknown"})
 
-        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
-            mock_client.list_available_metrics = AsyncMock(return_value=mock_metrics)
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Topic 'unknown' not found" in result[0].text
+        assert "Available topics:" in result[0].text
 
-            result = await handle_call_tool(
-                "list_available_metrics", {"pattern": "cpu.*"}
-            )
-
-            assert len(result) == 1
-            assert result[0].type == "text"
-            assert "Available metrics (2 found)" in result[0].text
-
-    @pytest.mark.asyncio
-    async def test_list_available_metrics_empty(self):
-        """Test list_available_metrics tool call with no metrics."""
-        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
-            mock_client.list_available_metrics = AsyncMock(return_value=[])
-
-            result = await handle_call_tool("list_available_metrics", {})
-
-            assert len(result) == 1
-            assert result[0].type == "text"
-            assert "No metrics found" in result[0].text
 
     @pytest.mark.asyncio
     async def test_unknown_tool(self):
@@ -333,10 +198,9 @@ class TestFormatQueryResult:
 
         formatted = _format_query_result(result)
 
-        assert "Result type: vector" in formatted
-        assert "Series 1:" in formatted
-        assert "Labels: {'__name__': 'cpu_usage', 'instance': 'server1'}" in formatted
-        assert "Value: 85.5" in formatted
+        # Should return JSON data as string
+        import json
+        assert json.loads(formatted) == result
 
     def test_format_successful_matrix_result(self):
         """Test formatting successful matrix result."""
@@ -355,9 +219,9 @@ class TestFormatQueryResult:
 
         formatted = _format_query_result(result)
 
-        assert "Result type: matrix" in formatted
-        assert "Data points: 2" in formatted
-        assert "Latest: 87.2" in formatted
+        # Should return JSON data as string
+        import json
+        assert json.loads(formatted) == result
 
     def test_format_failed_result(self):
         """Test formatting failed query result."""
@@ -365,7 +229,9 @@ class TestFormatQueryResult:
 
         formatted = _format_query_result(result)
 
-        assert "Query failed: Invalid query syntax" in formatted
+        # Should return JSON data as string
+        import json
+        assert json.loads(formatted) == result
 
     def test_format_empty_result(self):
         """Test formatting empty result."""
@@ -373,7 +239,9 @@ class TestFormatQueryResult:
 
         formatted = _format_query_result(result)
 
-        assert "No data returned" in formatted
+        # Should return JSON data as string
+        import json
+        assert json.loads(formatted) == result
 
     def test_format_multiple_series(self):
         """Test formatting result with multiple series."""
@@ -412,12 +280,9 @@ class TestFormatQueryResult:
 
         formatted = _format_query_result(result)
 
-        assert "Series 1:" in formatted
-        assert "Series 2:" in formatted
-        assert "Series 3:" in formatted
-        assert "Series 4:" in formatted
-        assert "Series 5:" in formatted
-        assert "... and 1 more" in formatted
+        # Should return JSON data as string
+        import json
+        assert json.loads(formatted) == result
 
     def test_format_missing_data_fields(self):
         """Test formatting result with missing data fields."""
@@ -425,4 +290,275 @@ class TestFormatQueryResult:
 
         formatted = _format_query_result(result)
 
-        assert "No data returned" in formatted
+        # Should return JSON data as string
+        import json
+        assert json.loads(formatted) == result
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_invalid_parameter_types(self):
+        """Test tool call with invalid parameter types."""
+        # Test with non-string parameters
+        result = await handle_call_tool(
+            "query_metric", {"query": 123, "relative_time": "5m"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        # Should handle type conversion or error appropriately
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_whitespace_parameters(self):
+        """Test tool call with whitespace-only parameters."""
+        result = await handle_call_tool(
+            "query_metric", {"query": "   ", "relative_time": "5m"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_very_long_parameters(self):
+        """Test tool call with very long parameter values."""
+        long_query = "cpu_usage" * 1000  # Very long query string
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(
+                return_value={"status": "success", "data": {"result": []}}
+            )
+
+            result = await handle_call_tool(
+                "query_metric", {"query": long_query, "relative_time": "5m"}
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_special_characters(self):
+        """Test tool call with special characters in parameters."""
+        special_query = 'cpu_usage{instance="server-1", job="test-job"}'
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(
+                return_value={"status": "success", "data": {"result": []}}
+            )
+
+            result = await handle_call_tool(
+                "query_metric", {"query": special_query, "relative_time": "5m"}
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_unicode_parameters(self):
+        """Test tool call with unicode characters in parameters."""
+        unicode_query = 'cpu_usage{instance="服务器-1"}'
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(
+                return_value={"status": "success", "data": {"result": []}}
+            )
+
+            result = await handle_call_tool(
+                "query_metric", {"query": unicode_query, "relative_time": "5m"}
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_empty_string_parameters(self):
+        """Test tool call with empty string parameters."""
+        result = await handle_call_tool(
+            "get_instance_value", {"metric_name": "", "instance": "server1"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_none_parameters(self):
+        """Test tool call with None parameters."""
+        result = await handle_call_tool(
+            "get_instance_value", {"metric_name": None, "instance": "server1"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_extra_parameters(self):
+        """Test tool call with extra unexpected parameters."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(
+                return_value={"status": "success", "data": {"result": []}}
+            )
+
+            result = await handle_call_tool(
+                "query_metric",
+                {
+                    "query": "cpu_usage",
+                    "relative_time": "5m",
+                    "extra_param": "should_be_ignored",
+                },
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_malformed_arguments(self):
+        """Test tool call with malformed arguments structure."""
+        result = await handle_call_tool("query_metric", "not_a_dict")
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_nested_arguments(self):
+        """Test tool call with nested argument structures."""
+        result = await handle_call_tool(
+            "query_metric", {"query": {"nested": "value"}, "relative_time": "5m"}
+        )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        # Should handle nested structures appropriately
+
+    @pytest.mark.asyncio
+    async def test_tool_call_timeout_handling(self):
+        """Test tool call timeout handling."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(
+                side_effect=asyncio.TimeoutError("Query timed out")
+            )
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+        assert "timed out" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_memory_error_handling(self):
+        """Test tool call memory error handling."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(
+                side_effect=MemoryError("Out of memory")
+            )
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_keyboard_interrupt_handling(self):
+        """Test tool call keyboard interrupt handling."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            # Use a custom exception that behaves like KeyboardInterrupt but doesn't trigger pytest's special handling
+            class CustomInterruptError(Exception):
+                pass
+
+            mock_client.query_metric = AsyncMock(
+                side_effect=CustomInterruptError("Interrupted")
+            )
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+        assert "Interrupted" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_system_exit_handling(self):
+        """Test tool call system exit handling."""
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            # Use a custom exception that behaves like SystemExit but doesn't trigger pytest's special handling
+            class CustomSystemExitError(Exception):
+                pass
+
+            mock_client.query_metric = AsyncMock(
+                side_effect=CustomSystemExitError("System exit")
+            )
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        assert "Error:" in result[0].text
+        assert "System exit" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_very_large_result_set(self):
+        """Test tool call with very large result set."""
+        # Create a large result set
+        large_result = {
+            "status": "success",
+            "data": {
+                "resultType": "vector",
+                "result": [
+                    {
+                        "metric": {
+                            "__name__": f"metric_{i}",
+                            "instance": f"server_{i}",
+                        },
+                        "value": [1640995200, str(i)],
+                    }
+                    for i in range(1000)  # 1000 series
+                ],
+            },
+        }
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.query_metric = AsyncMock(return_value=large_result)
+
+            result = await handle_call_tool(
+                "query_metric", {"query": "cpu_usage", "relative_time": "5m"}
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+        # Should return all series without truncation in JSON format
+        assert '"metric_1"' in result[0].text
+        assert '"metric_999"' in result[0].text
+        assert '"metric_500"' in result[0].text
+        # Should not have truncation message
+        assert "... and" not in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_very_long_metric_names(self):
+        """Test tool call with very long metric names."""
+        long_metric_name = "very_long_metric_name_" + "x" * 1000
+
+        with patch("mcp_prometheus_server.mcp_server.prometheus_client") as mock_client:
+            mock_client.get_instance_value = AsyncMock(return_value=85.5)
+
+            result = await handle_call_tool(
+                "get_instance_value",
+                {
+                    "metric_name": long_metric_name,
+                    "instance": "server1",
+                    "relative_time": "5m",
+                },
+            )
+
+        assert len(result) == 1
+        assert result[0].type == "text"
+

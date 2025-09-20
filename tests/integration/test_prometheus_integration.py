@@ -11,6 +11,16 @@ from unittest.mock import Mock, patch
 import pytest
 
 from mcp_prometheus_server.prometheus_client import PrometheusClient
+from tests.constants import (
+    CUSTOM_TIMEOUT,
+    DEFAULT_TIMEOUT,
+    TEST_AUTH_TOKEN,
+    TEST_HISTORY_LENGTH,
+    TEST_INTEGRATION_METRICS_COUNT,
+    TEST_INTEGRATION_PATTERN_METRICS_COUNT,
+    TEST_LARGE_RESULT_COUNT,
+    TEST_QUERY_RESULTS_COUNT,
+)
 
 
 class TestPrometheusIntegration:
@@ -22,7 +32,7 @@ class TestPrometheusIntegration:
         client = PrometheusClient()
 
         assert client.prometheus_url == "http://localhost:9090"
-        assert client.timeout == 30
+        assert client.timeout == DEFAULT_TIMEOUT
         assert client.pc is not None
         assert client.http_client is not None
 
@@ -31,12 +41,12 @@ class TestPrometheusIntegration:
         """Test Prometheus client initialization with authentication."""
         client = PrometheusClient(
             prometheus_url="https://prometheus.example.com",
-            auth_token="test-token",
-            timeout=60,
+            auth_token=TEST_AUTH_TOKEN,
+            timeout=CUSTOM_TIMEOUT,
         )
 
         assert client.prometheus_url == "https://prometheus.example.com"
-        assert client.timeout == 60
+        assert client.timeout == CUSTOM_TIMEOUT
 
     @pytest.mark.asyncio
     async def test_query_metric_integration(self):
@@ -76,7 +86,7 @@ class TestPrometheusIntegration:
 
     @pytest.mark.asyncio
     async def test_get_instance_value_integration(self):
-        """Test get_instance_value integration."""
+        """Test get_instance_value integration using query_metric."""
         client = PrometheusClient()
 
         mock_response = {
@@ -102,13 +112,15 @@ class TestPrometheusIntegration:
             mock_response_obj.raise_for_status.return_value = None
             mock_get.return_value = mock_response_obj
 
-            value = await client.get_instance_value("up", "localhost:9090", "5m")
+            result = await client.query_metric('up{instance="localhost:9090"}', "5m")
 
-            assert value == 1.0
+            assert result["status"] == "success"
+            assert len(result["data"]["result"]) == 1
+            assert result["data"]["result"][0]["value"][1] == "1"
 
     @pytest.mark.asyncio
     async def test_get_metric_history_integration(self):
-        """Test get_metric_history integration."""
+        """Test get_metric_history integration using query_metric."""
         client = PrometheusClient()
 
         mock_response = {
@@ -138,15 +150,16 @@ class TestPrometheusIntegration:
             mock_response_obj.raise_for_status.return_value = None
             mock_get.return_value = mock_response_obj
 
-            history = await client.get_metric_history("up", "1h", "1m")
+            result = await client.query_metric("up[1h:1m]", "1h")
 
-            assert len(history) == 3
-            assert all(point["value"] == 1.0 for point in history)
-            assert all("__name__" in point["labels"] for point in history)
+            assert result["status"] == "success"
+            assert result["data"]["resultType"] == "matrix"
+            assert len(result["data"]["result"]) == 1
+            assert len(result["data"]["result"][0]["values"]) == TEST_HISTORY_LENGTH
 
     @pytest.mark.asyncio
     async def test_list_available_metrics_integration(self):
-        """Test list_available_metrics integration."""
+        """Test list_available_metrics integration using query_metric."""
         client = PrometheusClient()
 
         mock_response = {
@@ -177,16 +190,18 @@ class TestPrometheusIntegration:
             mock_response_obj.raise_for_status.return_value = None
             mock_get.return_value = mock_response_obj
 
-            metrics = await client.list_available_metrics()
+            result = await client.query_metric('{__name__=~".+"}', "5m")
 
-            assert len(metrics) == 5
-            assert "up" in metrics
-            assert "prometheus_build_info" in metrics
-            assert "prometheus_config_last_reload_successful" in metrics
+            assert result["status"] == "success"
+            assert result["data"]["resultType"] == "vector"
+            assert len(result["data"]["result"]) == TEST_INTEGRATION_METRICS_COUNT
+            metric_names = [r["metric"]["__name__"] for r in result["data"]["result"]]
+            assert "up" in metric_names
+            assert "prometheus_build_info" in metric_names
 
     @pytest.mark.asyncio
     async def test_list_available_metrics_with_pattern_integration(self):
-        """Test list_available_metrics with pattern integration."""
+        """Test list_available_metrics with pattern integration using query_metric."""
         client = PrometheusClient()
 
         mock_response = {
@@ -216,10 +231,13 @@ class TestPrometheusIntegration:
             mock_response_obj.raise_for_status.return_value = None
             mock_get.return_value = mock_response_obj
 
-            metrics = await client.list_available_metrics("prometheus.*")
+            result = await client.query_metric('{__name__=~"prometheus.*"}', "5m")
 
-            assert len(metrics) == 4
-            assert all(metric.startswith("prometheus_") for metric in metrics)
+            assert result["status"] == "success"
+            assert result["data"]["resultType"] == "vector"
+            assert len(result["data"]["result"]) == TEST_INTEGRATION_PATTERN_METRICS_COUNT
+            metric_names = [r["metric"]["__name__"] for r in result["data"]["result"]]
+            assert all(name.startswith("prometheus_") for name in metric_names)
 
     @pytest.mark.asyncio
     async def test_error_handling_integration(self):
@@ -307,21 +325,19 @@ class TestPrometheusIntegration:
             tasks = [
                 client.query_metric("up", "5m"),
                 client.query_metric("up", "1h"),
-                client.get_instance_value("up", "localhost:9090", "5m"),
-                client.list_available_metrics(),
+                client.query_metric('up{instance="localhost:9090"}', "5m"),
+                client.query_metric('{__name__=~".+"}', "5m"),
             ]
 
             results = await asyncio.gather(*tasks)
 
             # All queries should succeed
-            assert len(results) == 4
-            # First two are query results (dictionaries)
+            assert len(results) == TEST_QUERY_RESULTS_COUNT
+            # All are query results (dictionaries)
             assert results[0]["status"] == "success"
             assert results[1]["status"] == "success"
-            # Third is get_instance_value result (float or None)
-            assert results[2] is not None
-            # Fourth is metrics list
-            assert len(results[3]) >= 0  # metrics list
+            assert results[2]["status"] == "success"
+            assert results[3]["status"] == "success"
 
     @pytest.mark.asyncio
     async def test_large_result_handling_integration(self):
@@ -356,7 +372,7 @@ class TestPrometheusIntegration:
             result = await client.query_metric("up", "5m")
 
             assert result["status"] == "success"
-            assert len(result["data"]["result"]) == 100
+            assert len(result["data"]["result"]) == TEST_LARGE_RESULT_COUNT
 
     @pytest.mark.asyncio
     async def test_empty_result_handling_integration(self):
@@ -379,16 +395,19 @@ class TestPrometheusIntegration:
             assert result["status"] == "success"
             assert len(result["data"]["result"]) == 0
 
-            # Test empty instance value
-            value = await client.get_instance_value(
-                "nonexistent_metric", "server1", "5m"
+            # Test empty instance value query
+            result = await client.query_metric(
+                'nonexistent_metric{instance="server1"}', "5m"
             )
-            assert value is None
+            assert result["status"] == "success"
+            assert len(result["data"]["result"]) == 0
 
-            # Test empty history
-            history = await client.get_metric_history("nonexistent_metric", "1h")
-            assert len(history) == 0
+            # Test empty history query
+            result = await client.query_metric("nonexistent_metric[1h:1m]", "1h")
+            assert result["status"] == "success"
+            assert len(result["data"]["result"]) == 0
 
-            # Test empty metrics list
-            metrics = await client.list_available_metrics("nonexistent.*")
-            assert len(metrics) == 0
+            # Test empty metrics list query
+            result = await client.query_metric('{__name__=~"nonexistent.*"}', "5m")
+            assert result["status"] == "success"
+            assert len(result["data"]["result"]) == 0
