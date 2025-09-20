@@ -1,0 +1,27 @@
+"""Test constants for MCP Prometheus Server tests."""
+
+# Timeout values
+DEFAULT_TIMEOUT = 30
+CUSTOM_TIMEOUT = 60
+
+# Test data values
+TEST_CPU_VALUE = 85.5
+TEST_TIMESTAMP = 1640995200
+TEST_HISTORY_LENGTH = 3
+TEST_METRICS_COUNT = 3
+TEST_PATTERN_METRICS_COUNT = 2
+TEST_INTEGRATION_METRICS_COUNT = 5
+TEST_INTEGRATION_PATTERN_METRICS_COUNT = 4
+TEST_QUERY_RESULTS_COUNT = 4
+TEST_LARGE_RESULT_COUNT = 100
+
+# System exit codes
+SYSTEM_EXIT_ERROR_CODE = 2
+SYSTEM_EXIT_SUCCESS_CODE = 0
+
+# Test password values (for testing only)
+TEST_AUTH_TOKEN = "test-token"  # noqa: S105
+TEST_BEARER_TOKEN = "bearer-token"  # noqa: S105
+TEST_PASSWORD = "testpass"  # noqa: S105
+TEST_USERNAME = "testuser"
+TEST_UNICODE_TOKEN = "token-with-unicode-测试"  # noqa: S105
